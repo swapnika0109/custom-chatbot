@@ -1,0 +1,132 @@
+version: "3.1"
+
+intents:
+  - greet
+  - goodbye
+  - affirm
+  - deny
+  - mood_great
+  - mood_unhappy
+  - bot_challenge
+  - weather
+  - ask_outfit_recommendation
+  - ask_fashion_trends
+  - ask_style_advice
+  - ask_local_fashion
+  - ask_fasion_advice
+  - ask_fasion_trend
+  - ask_fasion_tips
+  - ask_fasion_history
+  - ask_seasonal_fashion
+  - ask_international_fashion
+  - ask_perticular_outfits
+
+entities:
+  - season
+  - occasion
+  - outfit
+  - country
+
+slots:
+  season:
+    type: text
+    influence_conversation: true
+    mappings:
+    - type: from_entity
+      entity: season
+  
+  occasion:
+    type: text
+    influence_conversation: true
+    mappings:
+    - type: from_entity
+      entity: occasion
+  
+  outfit:
+    type: text
+    influence_conversation: true
+    mappings:
+    - type: from_entity
+      entity: outfit
+      
+  country:
+    type: text
+    influence_conversation: true
+    mappings:
+    - type: from_entity
+      entity: country
+
+responses:
+  utter_greet:
+  - text: "Hello! I'm your fashion assistant. How can I help you today?"
+
+  utter_goodbye:
+  - text: "Goodbye! Stay stylish!"
+
+  utter_iamabot:
+  - text: "I am a fashion assistant bot, created to help you with style advice."
+
+  utter_happy:
+  - text: "Great! Let me know if you need more fashion advice."
+
+  utter_cheer_up:
+  - text: "Here's something to cheer you up: Fashion is about feeling good!"
+
+  utter_did_that_help:
+  - text: "Did that help you?"
+
+  utter_fashion_advice:
+  - text: "Here are some general fashion tips: 1) Dress for your body type 2) Invest in classics 3) Accessorize wisely"
+
+  utter_fashion_trends:
+  - text: "Let me tell you about the latest fashion trends..."
+
+  utter_fashion_tips:
+  - text: "Here are some essential fashion tips..."
+
+  utter_fashion_history:
+  - text: "Fashion has evolved significantly over the centuries..."
+
+  utter_seasonal_fashion:
+  - text: "Different seasons call for different styles..."
+
+  utter_international_fashion:
+  - text: "Fashion varies greatly across different cultures..."
+
+  utter_particular_outfits:
+  - text: "Let me help you style that specific piece..."
+
+  utter_weather:
+  - text: "I can help you dress appropriately for any weather!"
+
+  utter_default:
+  - text: "I'm not sure how to respond to that. Would you like fashion advice or outfit recommendations?"
+
+actions:
+  - action_recommend_outfit
+  - action_get_fashion_trends
+  - action_style_advice
+  - action_local_fashion
+  - utter_greet
+  - utter_goodbye
+  - utter_fashion_advice
+  - utter_fashion_tips
+  - utter_fashion_history
+  - utter_seasonal_fashion
+  - utter_particular_outfits
+  - utter_weather
+  - utter_iamabot
+  - utter_happy
+  - utter_cheer_up
+  - utter_did_that_help
+
+session_config:
+  session_expiration_time: 60
+  carry_over_slots_to_new_session: true
+
+
+  
+      
+
+  
+ 

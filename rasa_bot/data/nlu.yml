@@ -1,0 +1,187 @@
+version: "3.1"
+
+nlu:
+- intent: greet
+  examples: |
+    - hey
+    - hello
+    - hi
+    - hello there
+    - good morning
+    - good evening
+    - hey there
+    - hi there
+
+- intent: goodbye
+  examples: |
+    - bye
+    - goodbye
+    - see you around
+    - see you later
+    - catch you later
+    - have a nice day
+    - bye bye
+
+- intent: affirm
+  examples: |
+    - yes
+    - indeed
+    - of course
+    - that sounds good
+    - correct
+    - sure
+    - absolutely
+
+- intent: deny
+  examples: |
+    - no
+    - never
+    - I don't think so
+    - don't like that
+    - no way
+    - not really
+
+- intent: mood_great
+  examples: |
+    - perfect
+    - feeling great
+    - wonderful
+    - I am feeling very good
+    - I am great
+    - I'm good
+
+- intent: mood_unhappy
+  examples: |
+    - sad
+    - very sad
+    - unhappy
+    - bad
+    - very bad
+    - feeling down
+    - feeling sad
+
+- intent: bot_challenge
+  examples: |
+    - are you a bot?
+    - are you a human?
+    - am I talking to a bot?
+    - am I talking to a human?
+    - who are you?
+
+- intent: weather
+  examples: |
+    - what's the weather like?
+    - how's the weather today?
+    - what's the temperature?
+    - is it going to rain?
+    - weather forecast
+
+- intent: ask_fasion_advice
+  examples: |
+    - what should I wear?
+    - can you help me choose an outfit?
+    - I need fashion advice
+    - what clothes would look good on me?
+    - help me with my outfit
+    - what's a good outfit for me?
+    - fashion suggestions please
+
+- intent: ask_fasion_trend
+  examples: |
+    - what's trending now?
+    - what are the current fashion trends?
+    - what's in style this season?
+    - latest fashion trends
+    - what are people wearing these days?
+    - popular fashion trends
+
+- intent: ask_fasion_tips
+  examples: |
+    - how can I improve my style?
+    - give me some fashion tips
+    - how to dress better?
+    - style improvement advice
+    - fashion dos and don'ts
+    - basic fashion tips
+
+- intent: ask_fasion_history
+  examples: |
+    - tell me about fashion history
+    - how has fashion evolved?
+    - fashion in the past
+    - historical fashion trends
+    - fashion evolution
+    - vintage fashion styles
+
+- intent: ask_seasonal_fashion
+  examples: |
+    - what should I wear this summer?
+    - winter fashion ideas
+    - spring outfit suggestions
+    - fall fashion trends
+    - seasonal clothing advice
+    - what's in for [summer](season)?
+    - best outfits for [winter](season)
+
+- intent: ask_local_fashion
+  examples: |
+    - what do people wear in [New York](country)?
+    - [French](country) fashion trends
+    - popular styles in [Japan](country)
+    - [Italian](country) fashion advice
+    - what's trending in [London](country)?
+    - local fashion in [Paris](country)
+
+- intent: ask_international_fashion
+  examples: |
+    - global fashion trends
+    - international style guide
+    - fashion around the world
+    - worldwide fashion trends
+    - cross-cultural fashion
+    - international designer brands
+
+- intent: ask_perticular_outfits
+  examples: |
+    - how to style a [black dress](outfit)?
+    - what goes with [jeans](outfit)?
+    - how to wear a [suit](outfit)?
+    - styling tips for [skirts](outfit)
+    - what to pair with [leather jacket](outfit)?
+    - accessories for [formal wear](outfit)
+
+- intent: ask_outfit_recommendation
+  examples: |
+    - What should I wear?
+    - Can you recommend an outfit?
+    - What's good to wear for [summer](season)?
+    - What should I wear to a [party](occasion)?
+    - Outfit suggestion for [formal](occasion) event
+    - What's appropriate for [winter](season)?
+    - Help me choose an outfit
+    - I need outfit ideas
+    - What clothes should I wear?
+    - Suggest me an outfit for [summer](season)
+    - What to wear to a [casual](occasion) event?
+
+- intent: ask_fashion_trends
+  examples: |
+    - What's trending now?
+    - Current fashion trends
+    - What's in style for [summer](season)?
+    - Popular styles this [winter](season)
+    - Fashion trends for this season
+    - What are people wearing these days?
+    - Tell me about current trends
+    - Latest fashion trends
+    - What's hot in fashion?
+
+- intent: ask_style_advice
+  examples: |
+    - How should I style this [dress](outfit)?
+    - Tips for wearing a [suit](outfit)
+    - How to accessorize a [dress](outfit)
+    - Style suggestions for [suit](outfit)
+    - How do I style my [jeans](outfit)?
+    - What goes well with a [black dress](outfit)?
+    - Help me style my [blazer](outfit) 

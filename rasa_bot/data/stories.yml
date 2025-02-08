@@ -1,0 +1,94 @@
+version: "3.1"
+
+stories:
+
+- story: happy path
+  steps:
+  - intent: greet
+  - action: utter_greet
+  - intent: mood_great
+  - action: utter_happy
+
+- story: sad path 1
+  steps:
+  - intent: greet
+  - action: utter_greet
+  - intent: mood_unhappy
+  - action: utter_cheer_up
+  - action: utter_did_that_help
+  - intent: affirm
+  - action: utter_happy
+
+- story: sad path 2
+  steps:
+  - intent: greet
+  - action: utter_greet
+  - intent: mood_unhappy
+  - action: utter_cheer_up
+  - action: utter_did_that_help
+  - intent: deny
+  - action: utter_goodbye
+
+- story: fashion advice path
+  steps:
+  - intent: greet
+  - action: utter_greet
+  - intent: ask_fasion_advice
+  - action: utter_fashion_advice
+  - intent: goodbye
+  - action: utter_goodbye
+
+- story: outfit recommendation path
+  steps:
+  - intent: ask_outfit_recommendation
+  - action: action_recommend_outfit
+
+- story: fashion trends path
+  steps:
+  - intent: ask_fashion_trends
+  - action: action_get_fashion_trends
+
+- story: style advice path
+  steps:
+  - intent: ask_style_advice
+  - action: action_style_advice
+
+- story: local fashion path
+  steps:
+  - intent: ask_local_fashion
+  - action: action_local_fashion
+
+- story: bot challenge
+  steps:
+  - intent: bot_challenge
+  - action: utter_iamabot
+
+- story: weather inquiry
+  steps:
+  - intent: weather
+  - action: utter_weather
+  - intent: goodbye
+  - action: utter_goodbye
+
+- story: fashion history path
+  steps:
+  - intent: ask_fasion_history
+  - action: utter_fashion_history
+  - intent: affirm
+  - action: utter_happy
+
+- story: seasonal fashion path
+  steps:
+  - intent: ask_seasonal_fashion
+  - action: utter_seasonal_fashion
+  - intent: affirm
+  - action: utter_happy
+
+- story: specific outfit advice
+  steps:
+  - intent: ask_perticular_outfits
+  - action: utter_particular_outfits
+  - intent: affirm
+  - action: utter_happy
+  - intent: goodbye
+  - action: utter_goodbye 

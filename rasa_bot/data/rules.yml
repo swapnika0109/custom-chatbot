@@ -1,0 +1,68 @@
+version: "3.1"
+
+rules:
+
+- rule: Say goodbye whenever the user says goodbye
+  steps:
+  - intent: goodbye
+  - action: utter_goodbye
+
+- rule: Say 'I am a bot' anytime the user challenges
+  steps:
+  - intent: bot_challenge
+  - action: utter_iamabot
+
+- rule: Respond to greetings
+  steps:
+  - intent: greet
+  - action: utter_greet
+
+- rule: Respond to fashion advice request
+  steps:
+  - intent: ask_fasion_advice
+  - action: utter_fashion_advice
+
+- rule: Respond to fashion tips request
+  steps:
+  - intent: ask_fasion_tips
+  - action: utter_fashion_tips
+
+- rule: Respond to fashion history request
+  steps:
+  - intent: ask_fasion_history
+  - action: utter_fashion_history
+
+- rule: Respond to seasonal fashion request
+  steps:
+  - intent: ask_seasonal_fashion
+  - action: utter_seasonal_fashion
+
+- rule: Respond to outfit recommendation
+  steps:
+  - intent: ask_outfit_recommendation
+  - action: action_recommend_outfit
+
+- rule: Respond to fashion trends
+  steps:
+  - intent: ask_fashion_trends
+  - action: action_get_fashion_trends
+
+- rule: Respond to style advice
+  steps:
+  - intent: ask_style_advice
+  - action: action_style_advice
+
+- rule: Respond to local fashion
+  steps:
+  - intent: ask_local_fashion
+  - action: action_local_fashion
+
+- rule: Respond to specific outfit advice request
+  steps:
+  - intent: ask_perticular_outfits
+  - action: utter_particular_outfits
+
+- rule: Respond to weather inquiry
+  steps:
+  - intent: weather
+  - action: utter_weather 
