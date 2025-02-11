@@ -7,6 +7,9 @@ from transformers import (
     AutoModelForSequenceClassification,
     AutoModelForCausalLM
 )
+from spacy.matcher import Matcher
+import matplotlib.colors as mcolors
+
 from sentence_transformers import SentenceTransformer
 import numpy as np
 
@@ -14,8 +17,15 @@ class NLPProcessor:
     def __init__(self):
         # Initialize models
         self.nlp = spacy.load("en_core_web_sm")
+        
+        # Initialize tokenizer and model
         self.tokenizer = AutoTokenizer.from_pretrained("gpt2")
         self.model = AutoModelForCausalLM.from_pretrained("gpt2")
+        
+        # Set up padding token
+        self.tokenizer.pad_token = self.tokenizer.eos_token
+        self.tokenizer.padding_side = 'left'  # GPT-2 requires left padding
+        
         self.embedding_model = SentenceTransformer('paraphrase-MiniLM-L6-v2')
         
         # Add zero-shot classifier
@@ -62,6 +72,7 @@ class NLPProcessor:
         """
         doc = self.nlp(self.preprocess_text(text))
         
+        # Initialize entities dictionary
         entities = {
             'clothing': [],
             'occasions': [],
@@ -71,20 +82,33 @@ class NLPProcessor:
             'brands': []
         }
         
-        # Custom fashion entity patterns
-        fashion_patterns = {
-            'clothing': ['dress', 'shirt', 'pants', 'skirt'],
-            'occasions': ['party', 'formal', 'casual', 'wedding'],
-            'seasons': ['summer', 'winter', 'spring', 'fall'],
-            'colors': ['red', 'blue', 'black', 'white'],
-            'materials': ['cotton', 'silk', 'wool', 'leather'],
-        }
+        # Define patterns
+        clothing_patterns = [[{'LOWER': word}] for word in ['dress', 'shirt', 'pants', 'skirt']]
+        occasions_patterns = [[{'LOWER': word}] for word in ['party', 'formal', 'casual', 'wedding']]
+        seasons_patterns = [[{'LOWER': word}] for word in ['summer', 'winter', 'spring', 'fall']]
+        colors_patterns = [[{'LOWER': color.lower()}] for color in mcolors.CSS4_COLORS.keys()]
+        materials_patterns = [[{'LOWER': word}] for word in ['cotton', 'silk', 'wool', 'leather']]
+
+        # Create matcher and add patterns
+        matcher = Matcher(self.nlp.vocab)
         
-        # Extract entities
-        for token in doc:
-            for category, patterns in fashion_patterns.items():
-                if token.text in patterns:
-                    entities[category].append(token.text)
+        # Add patterns with proper labels
+        matcher.add("CLOTHING", clothing_patterns)
+        matcher.add("OCCASIONS", occasions_patterns)
+        matcher.add("SEASONS", seasons_patterns)
+        matcher.add("COLORS", colors_patterns)
+        matcher.add("MATERIALS", materials_patterns)
+        
+        # Find matches
+        matches = matcher(doc)
+        
+        # Process matches
+        for match_id, start, end in matches:
+            matched_span = doc[start:end].text
+            # Convert the match_id to string category name
+            category = self.nlp.vocab.strings[match_id].upper()
+            if category in entities:
+                entities[category].append(matched_span)
         
         # Add SpaCy NER entities
         for ent in doc.ents:
@@ -104,7 +128,8 @@ class NLPProcessor:
             "fashion trend inquiry",
             "product search",
             "color coordination",
-            "size guidance"
+            "size guidance",
+            "brand recommendations"
         ]
         
         # Zero-shot classification for flexible intent recognition
@@ -116,6 +141,8 @@ class NLPProcessor:
         
         # Text classification for sentiment and urgency
         sentiment_result = self.text_classifier(text)
+
+       
         
         return {
             'intents': {
@@ -174,6 +201,8 @@ class NLPProcessor:
         embeddings = self.embedding_model.encode([processed_text])[0]
         return embeddings
 
+   
+
     def fine_tune_model(self, training_data: List[Dict[str, Text]]):
         """
         5. LLM Fine-tuning
@@ -186,6 +215,7 @@ class NLPProcessor:
         # 2. Fine-tuning the base model
         # 3. Saving the fine-tuned model
         pass
+        
 
     def generate_response(self, prompt: Text) -> Text:
         """
@@ -193,19 +223,29 @@ class NLPProcessor:
         - Fashion-specific response generation
         - Context-aware responses
         """
-        # Preprocess the prompt
-        processed_prompt = self.preprocess_text(prompt)
+        # Create a more focused fashion prompt
+        fashion_prompt = f"As a fashion expert, provide a helpful response to: {prompt}\n\nResponse:"
         
         # Generate response using the model
-        inputs = self.tokenizer(processed_prompt, return_tensors="pt")
+        inputs = self.tokenizer(fashion_prompt, return_tensors="pt", padding=True)
         outputs = self.model.generate(
             **inputs,
-            max_length=100,
+            max_length=150,  # Increased for more detailed responses
+            min_length=50,   # Ensure responses aren't too short
             num_return_sequences=1,
-            temperature=0.7
+            temperature=0.8,  # Slightly increased for more creative responses
+            top_p=0.9,       # Nucleus sampling
+            do_sample=True,  # Enable sampling
+            no_repeat_ngram_size=2,  # Avoid repetition
+            pad_token_id=self.tokenizer.eos_token_id
         )
         
+        # Decode and clean up the response
         response = self.tokenizer.decode(outputs[0], skip_special_tokens=True)
+        
+        # Remove the original prompt if it appears in the response
+        response = response.replace(fashion_prompt, "").strip()
+        
         return response
 
     def process_fashion_query(self, text: Text) -> Dict[str, Any]:
