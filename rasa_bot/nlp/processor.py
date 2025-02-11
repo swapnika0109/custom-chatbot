@@ -78,12 +78,12 @@ class NLPProcessor:
 
     def generate_response(self, prompt):
         try:
-            eng_prompt = f"""Fashion advice:
-            Q: Can I wear sandals in winter?
-            A: No, sandals are not suitable for winter. Choose warm boots instead.
+            eng_prompt = f"""Fashion advice for specific clothing items:
+            Q: Can I wear a thick sweater in summer?
+            A: No, a thick sweater is too warm for summer. Choose lightweight, breathable fabrics instead.
 
             Q: {prompt}
-            A:"""
+            A: Let me give specific advice about this clothing choice."""
 
             # Tokenize with smaller batch size
             inputs = self.tokenizer(
@@ -91,7 +91,7 @@ class NLPProcessor:
                 return_tensors="pt",
                 padding=True,
                 truncation=True,
-                max_length=64,  # Reduced further
+                max_length=64,
                 add_special_tokens=True
             )
 
@@ -99,12 +99,8 @@ class NLPProcessor:
             device = next(self.model.parameters()).device
             inputs = {k: v.to(device) for k, v in inputs.items()}
 
-            # Clear CUDA cache if using GPU
-            if torch.cuda.is_available():
-                torch.cuda.empty_cache()
-
-            # Generate with memory-efficient parameters
-            with torch.no_grad():  # Disable gradient calculation
+            # Generate with adjusted parameters
+            with torch.no_grad():
                 output = self.model.generate(
                     input_ids=inputs["input_ids"],
                     attention_mask=inputs["attention_mask"],
@@ -112,11 +108,11 @@ class NLPProcessor:
                     max_length=32,
                     num_return_sequences=1,
                     do_sample=True,
-                    temperature=0.3,
-                    top_p=0.7,
-                    no_repeat_ngram_size=2,
+                    temperature=0.7,  # Increased slightly for more variety
+                    top_p=0.9,
+                    no_repeat_ngram_size=3,
                     max_new_tokens=20,
-                    repetition_penalty=1.5
+                    repetition_penalty=1.8  # Increased to avoid copying example
                 )
 
             decoded_output = self.tokenizer.decode(output[0], skip_special_tokens=True)
@@ -124,14 +120,12 @@ class NLPProcessor:
             # Extract only the response part after the last "A:"
             response_parts = decoded_output.split("A:")
             if len(response_parts) > 1:
-                # Take the last response and clean it up
                 response = response_parts[-1].strip()
-                # Remove any additional text after periods or line breaks
                 response = response.split('\n')[0].split('|')[0].strip()
-                # If response has multiple sentences, take only the first one or two
-                sentences = response.split('.')
-                response = '. '.join(s.strip() for s in sentences[:2] if s.strip())
-                return response + ('.' if not response.endswith('.') else '')
+                if "Let me give specific advice" in response:  # Remove the prompt text if it appears
+                    response = response.replace("Let me give specific advice about this clothing choice.", "").strip()
+                return response
+
             return "I apologize, I couldn't generate appropriate fashion advice."
 
         except Exception as e:
@@ -161,16 +155,12 @@ class NLPProcessor:
             # Step 5: Generate response
             print("Generating new response...")
             response = self.generate_response(clean_query)
-            print(f"Generated response: {response}")
-
-            if not response:
-                return "I apologize, but I couldn't generate a proper response."
-
+            
             # Step 6: Store in FAISS
             self.index.add(np.array([query_embedding]))
             self.stored_queries.append(response)
 
-            return response
+            return response  # Return response without printing
 
         except Exception as e:
             print(f"Error in fashion_chatbot: {str(e)}")
