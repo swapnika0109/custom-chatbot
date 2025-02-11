@@ -1,261 +1,194 @@
-from typing import Text, Dict, Any, List
 import spacy
-import re
-from transformers import (
-    pipeline, 
-    AutoTokenizer, 
-    AutoModelForSequenceClassification,
-    AutoModelForCausalLM
-)
-from spacy.matcher import Matcher
-import matplotlib.colors as mcolors
-
-from sentence_transformers import SentenceTransformer
+import torch
+from transformers import AutoTokenizer, AutoModelForCausalLM
+import faiss
 import numpy as np
+from sentence_transformers import SentenceTransformer
 
 class NLPProcessor:
     def __init__(self):
-        # Initialize models
+        # Load models
+        self.tokenizer = AutoTokenizer.from_pretrained("gpt2")
+        # Set pad token to eos token since GPT2 doesn't have a pad token by default
+        self.tokenizer.pad_token = self.tokenizer.eos_token
+        
+        # Force CPU usage to avoid CUDA memory issues
+        self.model = AutoModelForCausalLM.from_pretrained(
+            "gpt2",
+            device_map=None,  # Don't use auto device mapping
+            torch_dtype=torch.float32,
+            low_cpu_mem_usage=True
+        ).to('cpu')  # Explicitly move to CPU
+        
         self.nlp = spacy.load("en_core_web_sm")
         
-        # Initialize tokenizer and model
-        self.tokenizer = AutoTokenizer.from_pretrained("gpt2")
-        self.model = AutoModelForCausalLM.from_pretrained("gpt2")
-        
-        # Set up padding token
-        self.tokenizer.pad_token = self.tokenizer.eos_token
-        self.tokenizer.padding_side = 'left'  # GPT-2 requires left padding
-        
-        self.embedding_model = SentenceTransformer('paraphrase-MiniLM-L6-v2')
-        
-        # Add zero-shot classifier
-        self.zero_shot_classifier = pipeline(
-            "zero-shot-classification",
-            model="facebook/bart-large-mnli"
+        # Force SentenceTransformer to use CPU
+        self.sentence_transformer = SentenceTransformer(
+            'all-MiniLM-L6-v2',
+            device='cpu'  # Explicitly set device to CPU
         )
         
-        # Add text classifier
-        self.text_classifier = pipeline(
-            "text-classification",
-            model="distilbert-base-uncased-finetuned-sst-2-english"
-        )
+        # Initialize FAISS with correct dimension
+        self.vector_dim = 384  # MiniLM-L6-v2 produces 384-dimensional embeddings
+        self.index = faiss.IndexFlatL2(self.vector_dim)
+        self.stored_queries = []
 
-    def preprocess_text(self, text: Text) -> Text:
-        """
-        1. Preprocessing Pipeline
-        - Lowercase conversion
-        - Remove special characters
-        - Remove extra whitespace
-        - Tokenization
-        - Remove stopwords
-        - Lemmatization
-        """
-        # Lowercase and remove special chars
-        text = text.lower()
-        text = re.sub(r'[^\w\s]', '', text)
-        
-        # SpaCy processing
+    def get_text_embedding(self, text):
+        """Convert text into a fixed-size embedding (random example here)."""
+        try:
+            embedding = self.sentence_transformer.encode(text)
+            return embedding.astype('float32')
+        except Exception as e:
+            print(f"Error generating embedding: {e}")
+            np.random.seed(hash(text) % (2**32))
+            return np.random.rand(self.vector_dim).astype('float32')
+    
+
+    def preprocess_text(self, text):
+        return text.lower().strip()
+
+    def extract_fashion_entities(self, text):
         doc = self.nlp(text)
+        entities = {"colors": [], "fabrics": [], "seasons": []}
         
-        # Remove stopwords and lemmatize
-        tokens = [token.lemma_ for token in doc 
-                 if not token.is_stop and not token.is_punct]
+        color_list = ["red", "blue", "green", "yellow", "black", "white", "pink", "purple", "orange", "brown", "gray"]
+        fabric_list = ["cotton", "silk", "denim", "wool", "linen", "leather"]
+        season_list = ["summer", "winter", "spring", "autumn", "fall"]
         
-        return ' '.join(tokens)
-
-    def extract_entities(self, text: Text) -> Dict[str, List[Text]]:
-        """
-        2. Entity Recognition
-        - Fashion-specific entities
-        - Named Entity Recognition (NER)
-        - Custom entity patterns
-        """
-        doc = self.nlp(self.preprocess_text(text))
+        for token in doc:
+            if token.text.lower() in color_list:
+                entities["colors"].append(token.text.lower())
+            elif token.text.lower() in fabric_list:
+                entities["fabrics"].append(token.text.lower())
+            elif token.text.lower() in season_list:
+                entities["seasons"].append(token.text.lower())
         
-        # Initialize entities dictionary
-        entities = {
-            'clothing': [],
-            'occasions': [],
-            'seasons': [],
-            'colors': [],
-            'materials': [],
-            'brands': []
-        }
-        
-        # Define patterns
-        clothing_patterns = [[{'LOWER': word}] for word in ['dress', 'shirt', 'pants', 'skirt']]
-        occasions_patterns = [[{'LOWER': word}] for word in ['party', 'formal', 'casual', 'wedding']]
-        seasons_patterns = [[{'LOWER': word}] for word in ['summer', 'winter', 'spring', 'fall']]
-        colors_patterns = [[{'LOWER': color.lower()}] for color in mcolors.CSS4_COLORS.keys()]
-        materials_patterns = [[{'LOWER': word}] for word in ['cotton', 'silk', 'wool', 'leather']]
-
-        # Create matcher and add patterns
-        matcher = Matcher(self.nlp.vocab)
-        
-        # Add patterns with proper labels
-        matcher.add("CLOTHING", clothing_patterns)
-        matcher.add("OCCASIONS", occasions_patterns)
-        matcher.add("SEASONS", seasons_patterns)
-        matcher.add("COLORS", colors_patterns)
-        matcher.add("MATERIALS", materials_patterns)
-        
-        # Find matches
-        matches = matcher(doc)
-        
-        # Process matches
-        for match_id, start, end in matches:
-            matched_span = doc[start:end].text
-            # Convert the match_id to string category name
-            category = self.nlp.vocab.strings[match_id].upper()
-            if category in entities:
-                entities[category].append(matched_span)
-        
-        # Add SpaCy NER entities
-        for ent in doc.ents:
-            if ent.label_ == 'ORG':  # Potential brand names
-                entities['brands'].append(ent.text)
-                
         return entities
 
-    def classify_intent(self, text: Text) -> Dict[str, float]:
-        """
-        3. Classification Pipeline using zero-shot and text classification
-        """
-        # Define possible fashion intents
-        candidate_intents = [
-            "outfit recommendation",
-            "style advice",
-            "fashion trend inquiry",
-            "product search",
-            "color coordination",
-            "size guidance",
-            "brand recommendations"
-        ]
-        
-        # Zero-shot classification for flexible intent recognition
-        zero_shot_result = self.zero_shot_classifier(
-            text,
-            candidate_intents,
-            multi_label=True
-        )
-        
-        # Text classification for sentiment and urgency
-        sentiment_result = self.text_classifier(text)
+    def retrieve_from_faiss(self, query_embedding):
+        if self.index.ntotal == 0:
+            return None
 
-       
-        
-        return {
-            'intents': {
-                label: score 
-                for label, score in zip(
-                    zero_shot_result['labels'], 
-                    zero_shot_result['scores']
-                )
-            },
-            'sentiment': sentiment_result[0]
-        }
+        _, I = self.index.search(np.array([query_embedding]), 1)
+        best_match_index = I[0][0]
 
-    def classify_fashion_attributes(self, text: Text) -> Dict[str, List[Dict[str, float]]]:
-        """
-        Zero-shot classification for fashion attributes
-        """
-        attribute_categories = {
-            'style': [
-                "casual", "formal", "business", "party", "sporty"
-            ],
-            'fit': [
-                "loose", "tight", "regular", "oversized", "slim"
-            ],
-            'occasion': [
-                "work", "wedding", "date", "everyday", "workout"
-            ]
-        }
-        
-        results = {}
-        for category, labels in attribute_categories.items():
-            classification = self.zero_shot_classifier(
-                text,
-                labels,
-                multi_label=True
+        if best_match_index >= 0:
+            return self.stored_queries[best_match_index]
+        return None
+
+    def generate_response(self, prompt):
+        try:
+            eng_prompt = f"""Fashion advice:
+            Q: Can I wear sandals in winter?
+            A: No, sandals are not suitable for winter. Choose warm boots instead.
+
+            Q: {prompt}
+            A:"""
+
+            # Tokenize with smaller batch size
+            inputs = self.tokenizer(
+                eng_prompt,
+                return_tensors="pt",
+                padding=True,
+                truncation=True,
+                max_length=64,  # Reduced further
+                add_special_tokens=True
             )
-            results[category] = [
-                {'label': label, 'score': score}
-                for label, score in zip(
-                    classification['labels'],
-                    classification['scores']
+
+            # Move inputs to the same device as model
+            device = next(self.model.parameters()).device
+            inputs = {k: v.to(device) for k, v in inputs.items()}
+
+            # Clear CUDA cache if using GPU
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+
+            # Generate with memory-efficient parameters
+            with torch.no_grad():  # Disable gradient calculation
+                output = self.model.generate(
+                    input_ids=inputs["input_ids"],
+                    attention_mask=inputs["attention_mask"],
+                    pad_token_id=self.tokenizer.eos_token_id,
+                    max_length=32,
+                    num_return_sequences=1,
+                    do_sample=True,
+                    temperature=0.3,
+                    top_p=0.7,
+                    no_repeat_ngram_size=2,
+                    max_new_tokens=20,
+                    repetition_penalty=1.5
                 )
-            ]
-        
-        return results
 
-    def get_embeddings(self, text: Text) -> np.ndarray:
-        """
-        4. Feature Extraction
-        - Text to vector conversion
-        - Semantic embeddings
-        """
-        # Preprocess text first
-        processed_text = self.preprocess_text(text)
-        
-        # Get embeddings using Sentence Transformers
-        embeddings = self.embedding_model.encode([processed_text])[0]
-        return embeddings
+            decoded_output = self.tokenizer.decode(output[0], skip_special_tokens=True)
+            
+            # Extract only the response part after the last "A:"
+            response_parts = decoded_output.split("A:")
+            if len(response_parts) > 1:
+                # Take the last response and clean it up
+                response = response_parts[-1].strip()
+                # Remove any additional text after periods or line breaks
+                response = response.split('\n')[0].split('|')[0].strip()
+                # If response has multiple sentences, take only the first one or two
+                sentences = response.split('.')
+                response = '. '.join(s.strip() for s in sentences[:2] if s.strip())
+                return response + ('.' if not response.endswith('.') else '')
+            return "I apologize, I couldn't generate appropriate fashion advice."
 
-   
+        except Exception as e:
+            print(f"Error in generate_response: {str(e)}")
+            return "I apologize, but I couldn't generate a response."
 
-    def fine_tune_model(self, training_data: List[Dict[str, Text]]):
-        """
-        5. LLM Fine-tuning
-        - Custom fashion domain adaptation
-        - Training on fashion-specific data
-        """
-        # TODO: Implement fine-tuning logic
-        # This would typically involve:
-        # 1. Preparing fashion-specific training data
-        # 2. Fine-tuning the base model
-        # 3. Saving the fine-tuned model
-        pass
-        
+    def fashion_chatbot(self, user_query):
+        try:
+            # Step 1: Preprocess input
+            clean_query = self.preprocess_text(user_query)
+            print(f"Preprocessed query: {clean_query}")
 
-    def generate_response(self, prompt: Text) -> Text:
-        """
-        6. Text Generation
-        - Fashion-specific response generation
-        - Context-aware responses
-        """
-        # Create a more focused fashion prompt
-        fashion_prompt = f"As a fashion expert, provide a helpful response to: {prompt}\n\nResponse:"
-        
-        # Generate response using the model
-        inputs = self.tokenizer(fashion_prompt, return_tensors="pt", padding=True)
-        outputs = self.model.generate(
-            **inputs,
-            max_length=150,  # Increased for more detailed responses
-            min_length=50,   # Ensure responses aren't too short
-            num_return_sequences=1,
-            temperature=0.8,  # Slightly increased for more creative responses
-            top_p=0.9,       # Nucleus sampling
-            do_sample=True,  # Enable sampling
-            no_repeat_ngram_size=2,  # Avoid repetition
-            pad_token_id=self.tokenizer.eos_token_id
-        )
-        
-        # Decode and clean up the response
-        response = self.tokenizer.decode(outputs[0], skip_special_tokens=True)
-        
-        # Remove the original prompt if it appears in the response
-        response = response.replace(fashion_prompt, "").strip()
-        
-        return response
+            # Step 2: Extract fashion-related entities
+            extracted_info = self.extract_fashion_entities(clean_query)
+            print(f"Extracted Entities: {extracted_info}")
 
-    def process_fashion_query(self, text: Text) -> Dict[str, Any]:
-        """
-        Complete pipeline execution
-        """
-        return {
-            'preprocessed': self.preprocess_text(text),
-            'entities': self.extract_entities(text),
-            'intent': self.classify_intent(text),
-            'embeddings': self.get_embeddings(text),
-            'response': self.generate_response(text)
-        }
+            # Step 3: Generate text embedding
+            query_embedding = self.get_text_embedding(clean_query)
+            print(f"Generated embedding shape: {query_embedding.shape}")
+
+            # Step 4: Try retrieving from FAISS
+            retrieved_response = self.retrieve_from_faiss(query_embedding)
+            if retrieved_response:
+                print("Retrieved from Vector Store")
+                return retrieved_response
+
+            # Step 5: Generate response
+            print("Generating new response...")
+            response = self.generate_response(clean_query)
+            print(f"Generated response: {response}")
+
+            if not response:
+                return "I apologize, but I couldn't generate a proper response."
+
+            # Step 6: Store in FAISS
+            self.index.add(np.array([query_embedding]))
+            self.stored_queries.append(response)
+
+            return response
+
+        except Exception as e:
+            print(f"Error in fashion_chatbot: {str(e)}")
+            print(f"Error type: {type(e).__name__}")
+            import traceback
+            print(f"Full traceback:\n{traceback.format_exc()}")
+            return "I apologize, but an error occurred while processing your request."
+
+# Example usage (optional)
+if __name__ == "__main__":
+    processor = NLPProcessor()
+    
+    test_queries = [
+        "I am wearing a wool dress in summer, is it okay?",
+        "Can I wear a leather jacket in winter?",
+        "Are white pants good for summer?"
+    ]
+    
+    for query in test_queries:
+        print(f"\nQuery: {query}")
+        print("Bot:", processor.fashion_chatbot(query))
