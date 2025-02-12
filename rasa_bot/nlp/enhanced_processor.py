@@ -28,6 +28,7 @@ class EnhancedNLPProcessor:
         """Initialize all required models"""
         # Load tokenizer and model
         self.tokenizer = AutoTokenizer.from_pretrained("gpt2")
+        # TODO
         self.tokenizer.pad_token = self.tokenizer.eos_token
         
         self.model = AutoModelForCausalLM.from_pretrained(
@@ -164,30 +165,166 @@ class EnhancedNLPProcessor:
             reverse=True
         )
 
-    def generate_enhanced_response(self, query: str) -> Tuple[str, float]:
+    def generate_enhanced_response(self, query: str) -> Tuple[str, float, bool]:
         """Generate response with context and confidence score"""
         try:
-            # Get relevant contexts
+            # 1. Search for similar past conversations
             contexts = self.hybrid_search(query)
             
-            # Prepare prompt with contexts
-            context_text = self._prepare_context(contexts)
+            # 2. Check context relevance
+            has_relevant_context = self._check_context_relevance(query, contexts)
             
-            # Generate response
-            response = self._generate_with_context(query, context_text)
+            if has_relevant_context:
+                # Use existing flow with context
+                context_text = self._prepare_context(contexts)
+                response = self._generate_with_context(query, context_text)
+            else:
+                # Generate response without context
+                response = self._generate_without_context(query)
             
-            # Calculate confidence score
-            confidence = self._calculate_confidence(response, contexts)
+            # Calculate confidence
+            confidence = self._calculate_confidence(response, contexts, has_relevant_context)
             
-            # Store conversation if confidence is high enough
+            # Store good responses for future use
             if confidence > 0.7:
                 self._store_conversation(query, response)
             
-            return response, confidence
+            return response, confidence, has_relevant_context
             
         except Exception as e:
             logger.error(f"Error generating response: {str(e)}")
-            return "I apologize, but I couldn't generate a response.", 0.0
+            return "I apologize, but I couldn't generate a response.", 0.0, False
+
+    def _check_context_relevance(self, query: str, contexts: List[Dict]) -> bool:
+        """Check if retrieved contexts are relevant to the query"""
+        if not contexts:
+            return False
+        
+        query_embedding = self.get_text_embedding(query)
+        relevance_threshold = 0.6  # Adjustable threshold
+        
+        relevant_contexts = 0
+        for context in contexts[:3]:  # Check top 3 contexts
+            # Calculate semantic similarity
+            context_text = f"{context['data']['query']} {context['data']['response']}"
+            context_embedding = self.get_text_embedding(context_text)
+            
+            similarity = np.dot(query_embedding, context_embedding) / (
+                np.linalg.norm(query_embedding) * np.linalg.norm(context_embedding)
+            )
+            
+            # Check entity overlap
+            query_entities = set(self.extract_fashion_entities(query).items())
+            context_entities = set(self.extract_fashion_entities(context_text).items())
+            entity_overlap = len(query_entities.intersection(context_entities))
+            
+            # Consider context relevant if either similarity is high or entities overlap
+            if similarity > relevance_threshold or entity_overlap > 0:
+                relevant_contexts += 1
+        
+        # Return True if at least 2 relevant contexts found
+        return relevant_contexts >= 2
+
+    def _generate_without_context(self, query: str) -> str:
+        """Generate response when no relevant context is available"""
+        # Preprocess query
+        processed_query = self._preprocess_text(query)
+        
+        # Create a more focused prompt for contextless generation
+        prompt = f"""As a fashion expert, provide specific advice about this clothing choice:
+        Q: {processed_query}
+        A: Based on fashion principles, """
+        
+        inputs = self.tokenizer(
+            prompt,
+            return_tensors="pt",
+            padding=True,
+            truncation=True,
+            max_length=512
+        )
+        
+        with torch.no_grad():
+            output = self.model.generate(
+                input_ids=inputs["input_ids"],
+                attention_mask=inputs["attention_mask"],
+                max_length=150,
+                num_return_sequences=1,
+                do_sample=True,
+                temperature=0.6,  # Slightly lower temperature for more focused responses
+                top_p=0.9,
+                no_repeat_ngram_size=3,
+                repetition_penalty=1.8
+            )
+        
+        response = self.tokenizer.decode(output[0], skip_special_tokens=True)
+        return self._clean_response(response)
+
+    def _calculate_confidence(self, response: str, contexts: List[Dict], has_relevant_context: bool) -> float:
+        """Calculate confidence score for the generated response"""
+        if not response or response.startswith("I apologize"):
+            return 0.0
+        
+        confidence_scores = []
+        
+        # Base response quality score
+        response_quality = self._get_response_quality_score(response)
+        confidence_scores.append(response_quality)
+        
+        # Context-based confidence
+        if has_relevant_context:
+            context_score = self._get_context_similarity_score(response, contexts)
+            confidence_scores.append(context_score * 1.2)  # Weight context score higher
+        else:
+            # Adjust confidence for contextless responses
+            contextless_score = self._get_contextless_confidence(response)
+            confidence_scores.append(contextless_score)
+        
+        # Entity coverage score
+        entity_score = self._get_entity_coverage_score(response)
+        confidence_scores.append(entity_score)
+        
+        # Adjust final confidence based on context availability
+        final_confidence = sum(confidence_scores) / len(confidence_scores)
+        if not has_relevant_context:
+            final_confidence *= 0.9  # Slightly reduce confidence for contextless responses
+        
+        return min(final_confidence, 1.0)
+
+    def _get_contextless_confidence(self, response: str) -> float:
+        """Calculate confidence for responses generated without context"""
+        score = 0.0
+        
+        # Check response structure
+        doc = self.nlp(response)
+        
+        # Check for fashion-specific reasoning
+        fashion_reasoning_terms = {
+            "because", "since", "as", "therefore", "considering",
+            "based on", "due to", "given that"
+        }
+        if any(term in response.lower() for term in fashion_reasoning_terms):
+            score += 0.3
+        
+        # Check for specific recommendations
+        if any(token.pos_ == "VERB" for token in doc):
+            score += 0.2
+        
+        # Check for fashion terminology
+        fashion_terms = {
+            "style", "fashion", "wear", "outfit", "look", "trend",
+            "season", "color", "pattern", "fabric", "material"
+        }
+        term_count = sum(1 for term in fashion_terms if term in response.lower())
+        score += min(0.1 * term_count, 0.3)
+        
+        # Check for balanced response length
+        words = len(response.split())
+        if 20 <= words <= 50:
+            score += 0.2
+        elif 10 <= words < 20:
+            score += 0.1
+        
+        return min(score, 1.0)
 
     def _prepare_context(self, contexts: List[Dict]) -> str:
         """Prepare context string from retrieved results"""
@@ -198,8 +335,14 @@ class EnhancedNLPProcessor:
 
     def _generate_with_context(self, query: str, context: str) -> str:
         """Generate response using the model with context"""
-        prompt = f"""{context}Fashion advice for specific clothing items:
-        Q: {query}
+        # Preprocess query
+        processed_query = self._preprocess_text(query)
+        
+        # Preprocess context
+        processed_context = self._preprocess_text(context)
+        
+        prompt = f"""{processed_context}Fashion advice for specific clothing items:
+        Q: {processed_query}
         A: Let me give specific advice about this clothing choice."""
         
         inputs = self.tokenizer(
@@ -226,50 +369,29 @@ class EnhancedNLPProcessor:
         response = self.tokenizer.decode(output[0], skip_special_tokens=True)
         return self._clean_response(response)
 
-    def _calculate_confidence(self, response: str, contexts: List[Dict]) -> float:
-        """Calculate confidence score for the generated response"""
-        # Implement your confidence calculation logic here
-        # This is a simple example
-        if not response or response.startswith("I apologize"):
-            return 0.0
+    def _preprocess_text(self, text: str) -> str:
+        """Preprocess text for better generation quality"""
+        # Use spaCy for preprocessing
+        doc = self.nlp(text)
         
-        confidence = 0.5  # Base confidence
+        # Basic preprocessing steps
+        processed_text = text.lower()  # Convert to lowercase
         
-        # Add confidence based on context similarity
-        if contexts:
-            confidence += 0.3
-            
-        # Add confidence based on response length
-        if len(response.split()) > 10:
-            confidence += 0.2
-            
-        return min(confidence, 1.0)
-
-    def _store_conversation(self, query: str, response: str):
-        """Store conversation in database"""
-        embedding = self.get_text_embedding(query)
+        # Remove extra whitespace
+        processed_text = " ".join(processed_text.split())
         
-        # Store in database
-        self.cursor.execute('''
-            INSERT INTO conversations (query, response, embedding, timestamp, version)
-            VALUES (?, ?, ?, ?, ?)
-        ''', (query, response, embedding.tobytes(), datetime.now(), '1.0'))
+        # Remove special characters but keep essential punctuation
+        processed_text = "".join(c for c in processed_text if c.isalnum() or c in " .,!?")
         
-        conversation_id = self.cursor.lastrowid
+        # Optional: Extract key fashion-related terms using spaCy entities
+        fashion_terms = [ent.text for ent in doc.ents if ent.label_ in ["PRODUCT", "COLOR", "MATERIAL"]]
         
-        # Store entities
-        entities = self.extract_fashion_entities(query)
-        for entity_type, values in entities.items():
-            for value in values:
-                self.cursor.execute('''
-                    INSERT INTO entity_index (conversation_id, entity_type, entity_value)
-                    VALUES (?, ?, ?)
-                ''', (conversation_id, entity_type, value))
-        
-        self.conn.commit()
-        
-        # Update FAISS index
-        self.index.add(np.array([embedding]))
+        # Ensure fashion terms are preserved in the processed text
+        for term in fashion_terms:
+            if term.lower() not in processed_text:
+                processed_text += f" {term.lower()}"
+                
+        return processed_text
 
     def _clean_response(self, response: str) -> str:
         """Clean and format the generated response"""
@@ -300,6 +422,16 @@ class EnhancedNLPProcessor:
         """Cleanup resources"""
         self.conn.close()
 
+    def get_text_embedding(self, text):
+        """Convert text into a fixed-size embedding using SentenceTransformer."""
+        try:
+            embedding = self.sentence_transformer.encode(text)
+            return embedding.astype('float32')
+        except Exception as e:
+            logger.error(f"Error generating embedding: {e}")
+            np.random.seed(hash(text) % (2**32))
+            return np.random.rand(self.vector_dim).astype('float32')
+
 # Example usage
 if __name__ == "__main__":
     processor = EnhancedNLPProcessor()
@@ -311,8 +443,8 @@ if __name__ == "__main__":
     ]
     
     for query in test_queries:
-        response, confidence = processor.generate_enhanced_response(query)
+        response, confidence, has_relevant_context = processor.generate_enhanced_response(query)
         print(f"\nQuery: {query}")
-        print(f"Response (confidence: {confidence:.2f}): {response}")
+        print(f"Response (confidence: {confidence:.2f}, relevant context: {has_relevant_context}): {response}")
     
     processor.cleanup() 

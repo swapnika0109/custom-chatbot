@@ -1,9 +1,15 @@
 from typing import Any, Text, Dict, List
 from rasa_sdk import Action, Tracker
 from rasa_sdk.executor import CollectingDispatcher
+from ..nlp.processor import NLPProcessor
+from ..nlp.intent_classifier import IntentClassifier
 
 
 class ActionRecommendOutfit(Action):
+    def __init__(self):
+        super().__init__()
+        self.nlp_processor = NLPProcessor()
+
     def name(self) -> Text:
         return "action_recommend_outfit"
 
@@ -11,9 +17,16 @@ class ActionRecommendOutfit(Action):
             tracker: Tracker,
             domain: Dict[Text, Any]) -> List[Dict[Text, Any]]:
         
-        # Get slots
-        season = tracker.get_slot('season')
-        occasion = tracker.get_slot('occasion')
+        # Get the latest user message
+        latest_message = tracker.latest_message.get('text', '')
+        
+        # Process with NLP
+        entities = self.nlp_processor.extract_fashion_entities(latest_message)
+        sentiment = self.nlp_processor.analyze_sentiment(latest_message)
+        
+        # Use existing slots
+        season = tracker.get_slot('season') or entities.get('seasons', [None])[0]
+        occasion = tracker.get_slot('occasion') or entities.get('occasions', [None])[0]
         
         # Basic outfit recommendations based on season and occasion
         outfits = {
@@ -142,4 +155,13 @@ class ActionLocalFashion(Action):
         else:
             dispatcher.utter_message("I'd love to share information about local fashion! Which country would you like to know about?")
         
-        return [] 
+        return []
+
+class ActionClassifyIntent(Action):
+    def __init__(self):
+        self.classifier = IntentClassifier()
+    
+    def run(self, dispatcher, tracker, domain):
+        user_message = tracker.latest_message.get('text')
+        intent, confidence = self.classifier.classify_intent(user_message)
+        # Use the classified intent... 

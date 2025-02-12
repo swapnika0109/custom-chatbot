@@ -1,13 +1,13 @@
 # Core ML & Data Processing
-numpy==1.23.5
+numpy>=1.19.5
 pandas==1.5.3
 tensorflow==2.11.0
-torch>=2.0.0
+torch>=1.9.0
 
 # NLP & LLM
 rasa==3.5.17
-spacy>=3.6.0
-transformers>=4.30.0
+spacy>=3.1.0
+transformers>=4.11.0
 
 # API & UI
 requests>=2.31.0
@@ -15,10 +15,10 @@ streamlit==1.22.0
 
 # Utilities
 python-dotenv>=1.0.0
-pyyaml>=6.0.0
+pyyaml>=5.4.1
 
 # RAG System
-faiss-cpu>=1.7.4
+faiss-cpu>=1.7.0
 chromadb>=0.4.0
 
 # Database & API
@@ -34,3 +34,16 @@ gradio>=3.40.0
 # Note: These are typically installed separately
 # tableau-api-lib>=0.1.27
 # powerbi-client>=0.1.0
+
+sentence-transformers>=2.0.0
+sqlite3
+typing
+python-dateutil
+
+# Previous requirements plus:
+fastapi>=0.68.0
+uvicorn>=0.15.0
+prometheus-client>=0.11.0
+pytest>=6.2.5
+pydantic>=1.8.2
+python-multipart>=0.0.5
