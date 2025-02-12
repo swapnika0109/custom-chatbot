@@ -4,6 +4,7 @@ from transformers import AutoTokenizer, AutoModelForCausalLM
 import faiss
 import numpy as np
 from sentence_transformers import SentenceTransformer
+import pickle
 
 class NLPProcessor:
     def __init__(self):
@@ -31,7 +32,7 @@ class NLPProcessor:
         # Initialize FAISS with correct dimension
         self.vector_dim = 384  # MiniLM-L6-v2 produces 384-dimensional embeddings
         self.index = faiss.IndexFlatL2(self.vector_dim)
-        self.stored_queries = []
+        
 
     def get_text_embedding(self, text):
         """Convert text into a fixed-size embedding (random example here)."""
@@ -67,14 +68,16 @@ class NLPProcessor:
 
     def retrieve_from_faiss(self, query_embedding):
         if self.index.ntotal == 0:
-            return None
+            return None, None
 
-        _, I = self.index.search(np.array([query_embedding]), 1)
-        best_match_index = I[0][0]
+        distance, indices = self.index.search(np.array([query_embedding]), 1)
+        best_match_index = indices[0][0]
+        best_match_distance = distance[0][0]
 
-        if best_match_index >= 0:
-            return self.stored_queries[best_match_index]
-        return None
+        if best_match_distance < 10.0:
+            return best_match_index, best_match_distance
+        
+        return None, None
 
     def generate_response(self, prompt):
         try:
@@ -133,6 +136,7 @@ class NLPProcessor:
             return "I apologize, but I couldn't generate a response."
 
     def fashion_chatbot(self, user_query):
+        response = None
         try:
             # Step 1: Preprocess input
             clean_query = self.preprocess_text(user_query)
@@ -146,21 +150,43 @@ class NLPProcessor:
             query_embedding = self.get_text_embedding(clean_query)
             print(f"Generated embedding shape: {query_embedding.shape}")
 
+            # Load metadata
+            metadata = {}
+            try:
+                with open('metadata.pkl', 'rb') as f:
+                    metadata = pickle.load(f)
+            except (FileNotFoundError, EOFError):
+                pass
+
             # Step 4: Try retrieving from FAISS
-            retrieved_response = self.retrieve_from_faiss(query_embedding)
-            if retrieved_response:
+            idx, _ = self.retrieve_from_faiss(query_embedding)
+            if idx is not None and idx in metadata:
                 print("Retrieved from Vector Store")
-                return retrieved_response
+                response = metadata[idx]["response"]
 
             # Step 5: Generate response
+            prompt = f"Use the following context to answer: {response}\n\nQuestion: {clean_query}" if response else clean_query
             print("Generating new response...")
-            response = self.generate_response(clean_query)
-            
-            # Step 6: Store in FAISS
-            self.index.add(np.array([query_embedding]))
-            self.stored_queries.append(response)
+            response = self.generate_response(prompt)
 
-            return response  # Return response without printing
+            # Only store successful responses
+            if response and not response.startswith("I apologize"):
+                # Step 6: Store in FAISS and metadata
+                new_idx = self.index.ntotal
+                self.index.add(np.array([query_embedding]))
+                
+                metadata[new_idx] = {
+                    "request": clean_query,
+                    "response": response
+                }
+                
+                try:
+                    with open('metadata.pkl', 'wb') as f:
+                        pickle.dump(metadata, f)
+                except Exception as e:
+                    print(f"Error in storing metadata: {str(e)}")
+
+            return response
 
         except Exception as e:
             print(f"Error in fashion_chatbot: {str(e)}")
