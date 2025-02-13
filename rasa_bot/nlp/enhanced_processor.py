@@ -80,6 +80,23 @@ class EnhancedNLPProcessor:
         ''')
         
         self.conn.commit()
+    def extract_fashion_entities(self, text):
+        doc = self.nlp(text)
+        entities = {"colors": [], "fabrics": [], "seasons": []}
+        
+        color_list = ["red", "blue", "green", "yellow", "black", "white", "pink", "purple", "orange", "brown", "gray"]
+        fabric_list = ["cotton", "silk", "denim", "wool", "linen", "leather"]
+        season_list = ["summer", "winter", "spring", "autumn", "fall"]
+        
+        for token in doc:
+            if token.text.lower() in color_list:
+                entities["colors"].append(token.text.lower())
+            elif token.text.lower() in fabric_list:
+                entities["fabrics"].append(token.text.lower())
+            elif token.text.lower() in season_list:
+                entities["seasons"].append(token.text.lower())
+        
+        return entities
 
     def hybrid_search(self, query: str, k: int = 3) -> List[Dict]:
         """Combine semantic and keyword search"""

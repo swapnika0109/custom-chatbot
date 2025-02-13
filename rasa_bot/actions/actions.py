@@ -8,7 +8,7 @@ from ..nlp.intent_classifier import IntentClassifier
 class ActionRecommendOutfit(Action):
     def __init__(self):
         super().__init__()
-        self.nlp_processor = NLPProcessor()
+        self.nlp_processor = NLPProcessor(enhanced=True)
 
     def name(self) -> Text:
         return "action_recommend_outfit"
@@ -20,37 +20,28 @@ class ActionRecommendOutfit(Action):
         # Get the latest user message
         latest_message = tracker.latest_message.get('text', '')
         
-        # Process with NLP
-        entities = self.nlp_processor.extract_fashion_entities(latest_message)
-        sentiment = self.nlp_processor.analyze_sentiment(latest_message)
+        # Process with enhanced NLP
+        entities = self.nlp_processor.extract_fashion_entities(latest_message, use_advanced=True)
         
-        # Use existing slots
+        # Use existing slots with enhanced entity extraction
         season = tracker.get_slot('season') or entities.get('seasons', [None])[0]
         occasion = tracker.get_slot('occasion') or entities.get('occasions', [None])[0]
         
-        # Basic outfit recommendations based on season and occasion
-        outfits = {
-            'summer': {
-                'casual': "Light cotton t-shirt, shorts, and comfortable sandals",
-                'formal': "Light linen suit or a flowing summer dress",
-                'party': "Colorful sundress or light shirt with chinos"
-            },
-            'winter': {
-                'casual': "Sweater, jeans, and boots",
-                'formal': "Wool suit or long-sleeve dress with tights",
-                'party': "Sparkly dress with tights or dark suit with festive tie"
-            }
-        }
-        
+        # Try Rasa's predefined responses first
         if season and occasion:
             outfit = outfits.get(season, {}).get(occasion, "")
             if outfit:
                 dispatcher.utter_message(f"For a {occasion} event in {season}, I recommend: {outfit}")
-            else:
-                dispatcher.utter_message("I can help you with outfit recommendations! Could you specify the season and occasion?")
-        else:
-            dispatcher.utter_message("To give you the best outfit recommendation, could you tell me the season and occasion?")
+                return []
         
+        # If Rasa doesn't have a suitable response, use enhanced processor
+        enhanced_response, confidence = self.nlp_processor.generate_enhanced_response(latest_message)
+        if enhanced_response and confidence > 0.7:  # Only use if confidence is high enough
+            dispatcher.utter_message(enhanced_response)
+            return []
+            
+        # Fall back to default response if neither method works
+        dispatcher.utter_message("To give you the best outfit recommendation, could you tell me the season and occasion?")
         return []
 
 class ActionGetFashionTrends(Action):
@@ -159,9 +150,43 @@ class ActionLocalFashion(Action):
 
 class ActionClassifyIntent(Action):
     def __init__(self):
+        super().__init__()
         self.classifier = IntentClassifier()
+        self.nlp_processor = NLPProcessor(enhanced=True)
     
-    def run(self, dispatcher, tracker, domain):
-        user_message = tracker.latest_message.get('text')
+    def name(self) -> Text:
+        return "action_classify_intent"
+
+    def run(self, dispatcher: CollectingDispatcher,
+            tracker: Tracker,
+            domain: Dict[Text, Any]) -> List[Dict[Text, Any]]:
+        
+        user_message = tracker.latest_message.get('text', '')
+        
+        # Get intent classification
         intent, confidence = self.classifier.classify_intent(user_message)
-        # Use the classified intent... 
+        
+        # Get enhanced response based on intent
+        response, response_confidence, has_context = self.nlp_processor.generate_enhanced_response(user_message)
+        
+        # Combine both results for a more informed response
+        if confidence > 0.7:  # High confidence in intent classification
+            dispatcher.utter_message(
+                text=response,
+                json_message={
+                    "detected_intent": intent,
+                    "confidence": confidence,
+                    "has_relevant_context": has_context
+                }
+            )
+        else:
+            # Fall back to general response with lower confidence
+            dispatcher.utter_message(
+                text="I'm not entirely sure what you're asking about. Could you please rephrase your question?",
+                json_message={
+                    "detected_intent": intent,
+                    "confidence": confidence
+                }
+            )
+        
+        return [] 
