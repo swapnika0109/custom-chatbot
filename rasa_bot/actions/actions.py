@@ -1,14 +1,17 @@
 from typing import Any, Text, Dict, List
 from rasa_sdk import Action, Tracker
 from rasa_sdk.executor import CollectingDispatcher
-from ..nlp.processor import NLPProcessor
-from ..nlp.intent_classifier import IntentClassifier
+from nlp.enhanced_processor import EnhancedNLPProcessor
+from nlp.intent_classifier import IntentClassifier
+from nlp.processor import NLPProcessor
+import logging
 
-
+logging.basicConfig(level=logging.DEBUG)
+logger = logging.getLogger(__name__)
 class ActionRecommendOutfit(Action):
     def __init__(self):
         super().__init__()
-        self.nlp_processor = NLPProcessor(enhanced=True)
+        self.nlp_processor = EnhancedNLPProcessor()
 
     def name(self) -> Text:
         return "action_recommend_outfit"
@@ -22,6 +25,7 @@ class ActionRecommendOutfit(Action):
         
         # Process with enhanced NLP
         entities = self.nlp_processor.extract_fashion_entities(latest_message, use_advanced=True)
+        logger.DEBUG('Entities : ', entities)
         
         # Use existing slots with enhanced entity extraction
         season = tracker.get_slot('season') or entities.get('seasons', [None])[0]
