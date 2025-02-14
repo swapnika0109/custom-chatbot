@@ -1,7 +1,30 @@
 import streamlit as st
 import requests
+import logging
+
+def rasa_response(prompt):
+    try:
+        st.session_state.messages.append({"role": "user", "content": prompt})
+        response = requests.post(
+            "http://localhost:5005/webhooks/rest/webhook", 
+            json={"message": prompt}
+        )
+        rasa_response = response.json()
+        logging.info('received response ', rasa_response)
+        # Add assistant response to chat history
+        if rasa_response:
+            response_text = rasa_response[0].get("text", "I'm not sure how to respond to that.")
+            st.session_state.messages.append({"role": "assistant", "content": response_text})
+            logging.info('received response ', st.session_state.messages)
+        else:
+            st.session_state.messages.append({"role": "assistant", "content": "I'm not sure how to respond to that."})
+            logging.info('received response ', st.session_state.messages)
+
+    except requests.exceptions.RequestException as e:
+            st.session_state.messages.append({"role": "assistant", "content": f"Error connecting to Rasa: {e}"})
 
 def main():
+    logging.basicConfig(level=logging.INFO, format=' %(levelname)s - %(message)s')
     # Initialize session state for messages if not already present
     if "messages" not in st.session_state:
         st.session_state.messages = []
@@ -15,28 +38,11 @@ def main():
 
     # Chat input
     prompt = st.text_input("What's your fashion question?", key="user_input")
-    
-    if st.button("Send") and prompt:
-        # Add user message to chat history
-        st.session_state.messages.append({"role": "user", "content": prompt})
+    logging.info('received prompt ', prompt)
+    if prompt:
+        st.button("Send", on_click=lambda: rasa_response(prompt))
         
-        # Get bot response from Rasa
-        try:
-            response = requests.post(
-                "http://localhost:5005/webhooks/rest/webhook", 
-                json={"message": prompt}
-            )
-            rasa_response = response.json()
-
-            # Add assistant response to chat history
-            if rasa_response:
-                response_text = rasa_response[0].get("text", "I'm not sure how to respond to that.")
-                st.session_state.messages.append({"role": "assistant", "content": response_text})
-            else:
-                st.session_state.messages.append({"role": "assistant", "content": "I'm not sure how to respond to that."})
-
-        except requests.exceptions.RequestException as e:
-            st.session_state.messages.append({"role": "assistant", "content": f"Error connecting to Rasa: {e}"})
+        
 
 if __name__ == "__main__":
     main()

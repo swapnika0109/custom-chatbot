@@ -101,3 +101,6 @@ Future Enhancements
 
 License
 This project is open-source and available under the MIT License.
+
+
+python -m spacy download en_core_web_sm
