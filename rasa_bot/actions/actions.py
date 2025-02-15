@@ -1,17 +1,41 @@
 from typing import Any, Text, Dict, List
 from rasa_sdk import Action, Tracker
 from rasa_sdk.executor import CollectingDispatcher
-from nlp.enhanced_processor import EnhancedNLPProcessor
-from nlp.intent_classifier import IntentClassifier
-from nlp.processor import NLPProcessor
+from rasa_bot.nlp.enhanced_processor import EnhancedNLPProcessor
+from rasa_bot.nlp.intent_classifier import IntentClassifier
+from rasa_bot.nlp.processor import NLPProcessor
 import logging
 
 logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
+
+outfits = {
+    'summer': {
+        'casual': "light cotton t-shirt and shorts",
+        'formal': "linen suit with a light shirt"
+    },
+    'winter': {
+        'casual': "wool sweater and jeans",
+        'formal': "wool suit with a turtleneck"
+    }
+    # Add more seasons and occasions as needed
+}
+
 class ActionRecommendOutfit(Action):
     def __init__(self):
         super().__init__()
         self.nlp_processor = EnhancedNLPProcessor()
+        self.outfits = {
+            'summer': {
+                'casual': "light cotton t-shirt and shorts",
+                'formal': "linen suit with a light shirt"
+            },
+            'winter': {
+                'casual': "wool sweater and jeans",
+                'formal': "wool suit with a turtleneck"
+            }
+            # Add more seasons and occasions as needed
+        }
 
     def name(self) -> Text:
         return "action_recommend_outfit"
@@ -24,22 +48,22 @@ class ActionRecommendOutfit(Action):
         latest_message = tracker.latest_message.get('text', '')
         
         # Process with enhanced NLP
-        entities = self.nlp_processor.extract_fashion_entities(latest_message, use_advanced=True)
-        logger.DEBUG('Entities : ', entities)
+        entities = self.nlp_processor.extract_fashion_entities(latest_message)
+        logger.debug('Entities: %s', entities)
         
         # Use existing slots with enhanced entity extraction
-        season = tracker.get_slot('season') or entities.get('seasons', [None])[0]
-        occasion = tracker.get_slot('occasion') or entities.get('occasions', [None])[0]
+        season = tracker.get_slot('season') or (entities.get('seasons') and entities['seasons'][0])
+        occasion = tracker.get_slot('occasion') or (entities.get('occasions') and entities['occasions'][0])
         
         # Try Rasa's predefined responses first
         if season and occasion:
-            outfit = outfits.get(season, {}).get(occasion, "")
+            outfit = self.outfits.get(season, {}).get(occasion, "")
             if outfit:
                 dispatcher.utter_message(f"For a {occasion} event in {season}, I recommend: {outfit}")
                 return []
         
         # If Rasa doesn't have a suitable response, use enhanced processor
-        enhanced_response, confidence = self.nlp_processor.generate_enhanced_response(latest_message)
+        enhanced_response, confidence, has_relevant_context = self.nlp_processor.generate_enhanced_response(latest_message)
         if enhanced_response and confidence > 0.7:  # Only use if confidence is high enough
             dispatcher.utter_message(enhanced_response)
             return []
@@ -156,7 +180,7 @@ class ActionClassifyIntent(Action):
     def __init__(self):
         super().__init__()
         self.classifier = IntentClassifier()
-        self.nlp_processor = NLPProcessor(enhanced=True)
+        self.nlp_processor = EnhancedNLPProcessor()
     
     def name(self) -> Text:
         return "action_classify_intent"

@@ -37,6 +37,8 @@ class EnhancedNLPProcessor:
             torch_dtype=torch.float32,
             low_cpu_mem_usage=True
         ).to('cpu')
+
+        
         
         self.nlp = spacy.load("en_core_web_sm")
         
@@ -205,6 +207,8 @@ class EnhancedNLPProcessor:
             # Store good responses for future use
             if confidence > 0.7:
                 self._store_conversation(query, response)
+
+            logger.debug('Response: %s', response)
             
             return response, confidence, has_relevant_context
             
@@ -448,6 +452,30 @@ class EnhancedNLPProcessor:
             logger.error(f"Error generating embedding: {e}")
             np.random.seed(hash(text) % (2**32))
             return np.random.rand(self.vector_dim).astype('float32')
+
+    def _get_response_quality_score(self, response: str) -> float:
+        """Calculate a quality score for the response."""
+        # Example logic for scoring the response
+        if not response:
+            return 0.0
+        # Simple heuristic: longer responses might be more informative
+        length_score = min(len(response) / 100, 1.0)
+        return length_score
+
+    def _get_entity_coverage_score(self, response: str) -> float:
+        """Calculate a score based on how well the response covers expected entities."""
+        # Example logic for scoring entity coverage
+        if not response:
+            return 0.0
+        
+        # Define some example entities that might be relevant
+        expected_entities = {"color", "fabric", "season"}
+        
+        # Count how many expected entities are mentioned in the response
+        entity_count = sum(1 for entity in expected_entities if entity in response.lower())
+        
+        # Normalize the score based on the number of expected entities
+        return min(entity_count / len(expected_entities), 1.0)
 
 # Example usage
 if __name__ == "__main__":
